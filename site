@@ -1,0 +1,208 @@
+cd your-project-directory
+npm install gh-pages --save-dev
+import React, { useState, useCallback } from 'react';
+
+const BOARD_SIZE = 15;
+const CELL_SIZE = 40;
+
+const directions = [
+  [1, 0],   // 세로
+  [0, 1],   // 가로
+  [1, 1],   // 대각선 ↘
+  [1, -1],  // 대각선 ↗
+];
+
+const RenjuGame = () => {
+  const [board, setBoard] = useState(() => Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null)));
+  const [currentPlayer, setCurrentPlayer] = useState('black');
+  const [message, setMessage] = useState('게임을 시작합니다. 흑돌 차례입니다.');
+  const [winner, setWinner] = useState(null);
+
+  // 한 방향에서 연속된 돌의 개수와 열린 끝을 체크하는 함수
+  const countInDirection = useCallback((board, row, col, player, [dx, dy]) => {
+    let count = 1;
+    let openEnds = 0;
+
+    // 주어진 방향으로 확인
+    for (let i = 1; i < 5; i++) {
+      const newRow = row + dx * i;
+      const newCol = col + dy * i;
+      if (newRow < 0 || newCol < 0 || newRow >= BOARD_SIZE || newCol >= BOARD_SIZE) break;
+      if (board[newRow][newCol] === player) {
+        count++;
+      } else if (board[newRow][newCol] === null) {
+        openEnds++;
+        break;
+      } else {
+        break;
+      }
+    }
+
+    // 반대 방향으로 확인
+    for (let i = 1; i < 5; i++) {
+      const newRow = row - dx * i;
+      const newCol = col - dy * i;
+      if (newRow < 0 || newCol < 0 || newRow >= BOARD_SIZE || newCol >= BOARD_SIZE) break;
+      if (board[newRow][newCol] === player) {
+        count++;
+      } else if (board[newRow][newCol] === null) {
+        openEnds++;
+        break;
+      } else {
+        break;
+      }
+    }
+
+    return { count, openEnds };
+  }, []);
+
+  // 금수 규칙을 확인하는 함수
+  const checkForbiddenMove = useCallback((board, row, col) => {
+    let openThrees = 0;
+    let openFours = 0;
+    let isOverline = false;
+
+    // 네 가지 방향에 대해 금수 규칙 확인
+    directions.forEach(([dx, dy]) => {
+      const { count, openEnds } = countInDirection(board, row, col, 'black', [dx, dy]);
+
+      // 열린 삼 확인
+      if (count === 3 && openEnds === 2) {
+        openThrees++;
+      }
+
+      // 열린 사 확인
+      if (count === 4 && openEnds >= 1) {
+        openFours++;
+      }
+
+      // 장목(6목 이상) 확인
+      if (count > 5) {
+        isOverline = true;
+      }
+    });
+
+    // 3-3 금지: 열린 삼이 두 개 이상일 때 금수
+    if (openThrees >= 2) return '3-3 금지';
+    
+    // 4-4 금지: 열린 사가 두 개 이상일 때 금수
+    if (openFours >= 2) return '4-4 금지';
+    
+    // 장목 금지: 6목 이상일 때 금수
+    if (isOverline) return '장목 금지';
+
+    return null;
+  }, [countInDirection]);
+
+  // 승리 조건 확인하는 함수 (5목 완성 확인)
+  const checkFive = useCallback((board, row, col, player) => {
+    return directions.some(([dx, dy]) => {
+      const { count } = countInDirection(board, row, col, player, [dx, dy]);
+      return count === 5;  // 5목이 완성된 경우
+    });
+  }, [countInDirection]);
+
+  // 돌을 놓는 함수
+  const handleCellClick = useCallback((row, col) => {
+    if (board[row][col] || winner) return;
+
+    const newBoard = board.map(r => [...r]);
+    newBoard[row][col] = currentPlayer;
+
+    // 금수 확인: 흑돌만 금수 적용
+    if (currentPlayer === 'black') {
+      const forbiddenMove = checkForbiddenMove(newBoard, row, col);
+      if (forbiddenMove) {
+        setMessage(`${forbiddenMove}입니다. 다른 곳에 돌을 놓아주세요.`);
+        return;  // 금수면 클릭 중지
+      }
+    }
+
+    setBoard(newBoard);
+
+    // 승리 조건 확인
+    if (checkFive(newBoard, row, col, currentPlayer)) {
+      setWinner(currentPlayer);
+      setMessage(`${currentPlayer === 'black' ? '흑' : '백'}이 승리했습니다!`);
+    } else {
+      setCurrentPlayer(prev => prev === 'black' ? 'white' : 'black');
+      setMessage(`${currentPlayer === 'black' ? '백' : '흑'} 차례입니다.`);
+    }
+  }, [board, currentPlayer, winner, checkFive, checkForbiddenMove]);
+
+  return (
+    <div className="flex flex-col items-center justify-center h-screen bg-amber-100">
+      <h1 className="text-3xl font-bold mb-4 text-amber-800">한국식 오목 (렌주)</h1>
+      <div className="mb-4 text-lg font-semibold text-amber-700">{message}</div>
+      <div className="relative bg-amber-200 rounded-lg p-4" style={{
+        width: `${CELL_SIZE * (BOARD_SIZE - 1) + 8}px`,
+        height: `${CELL_SIZE * (BOARD_SIZE - 1) + 8}px`,
+      }}>
+        {/* 바둑판 선 */}
+        {[...Array(BOARD_SIZE)].map((_, i) => (
+          <React.Fragment key={`lines-${i}`}>
+            <div className="absolute bg-amber-800" style={{
+              left: 0,
+              top: `${i * CELL_SIZE}px`,
+              width: '100%',
+              height: '2px',
+            }} />
+            <div className="absolute bg-amber-800" style={{
+              top: 0,
+              left: `${i * CELL_SIZE}px`,
+              width: '2px',
+              height: '100%',
+            }} />
+          </React.Fragment>
+        ))}
+        {/* 화점 */}
+        {[3, 7, 11].map(row => 
+          [3, 7, 11].map(col => (
+            <div
+              key={`star-${row}-${col}`}
+              className="absolute bg-amber-800 rounded-full"
+              style={{
+                width: '8px',
+                height: '8px',
+                left: `${col * CELL_SIZE - 4}px`,
+                top: `${row * CELL_SIZE - 4}px`,
+              }}
+            />
+          ))
+        )}
+        {/* 돌 */}
+        {board.map((row, rowIndex) =>
+          row.map((cell, colIndex) => (
+            <React.Fragment key={`cell-${rowIndex}-${colIndex}`}>
+              {cell && (
+                <div
+                  className={`absolute rounded-full shadow-md ${
+                    cell === 'black' ? 'bg-gray-800' : 'bg-white'
+                  }`}
+                  style={{
+                    width: `${CELL_SIZE - 4}px`,
+                    height: `${CELL_SIZE - 4}px`,
+                    left: `${colIndex * CELL_SIZE - (CELL_SIZE - 4) / 2 + 4}px`,
+                    top: `${rowIndex * CELL_SIZE - (CELL_SIZE - 4) / 2 + 4}px`,
+                  }}
+                />
+              )}
+              <div
+                className="absolute cursor-pointer"
+                style={{
+                  width: `${CELL_SIZE}px`,
+                  height: `${CELL_SIZE}px`,
+                  left: `${colIndex * CELL_SIZE - CELL_SIZE / 2 + 4}px`,
+                  top: `${rowIndex * CELL_SIZE - CELL_SIZE / 2 + 4}px`,
+                }}
+                onClick={() => handleCellClick(rowIndex, colIndex)}
+              />
+            </React.Fragment>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default RenjuGame;
